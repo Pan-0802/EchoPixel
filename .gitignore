@@ -1,0 +1,15 @@
+# 忽略虚拟环境
+.venv/
+venv/
+__pycache__/
+
+# 忽略 Stable Diffusion WebUI 整个文件夹（太大了）
+sd-webui-aki-v4.11.1-cu128/
+
+# 忽略生成的图片和临时文件
+*.png
+*.jpg
+outputs/
+
+# 忽略 VS Code 配置
+.vscode/
