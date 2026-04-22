@@ -10,7 +10,7 @@
 - **跨次元生成**：注入特定的 Pixel-Art LoRA，统一直出高品质像素风格。
 
 ## 📸 运行预览
-![运行截图](./EchoPixel_Demo.jpg) 
+![运行截图](./first_echo_pixel.png) 
 *(建议把你那张图书馆机器人的运行截图 改名为 EchoPixel_Demo.jpg 放在根目录，这样 GitHub 就能直接显示图片了)*
 
 ## 🚀 快速开始
@@ -31,9 +31,9 @@ pip install -r requirements.txt
 ```
 
 ### 3.配置后端
-本项目依赖 Stable Diffusion WebUI 开启 API 模式运行。
-端口：http://127.0.0.1:7860
-模型要求：需在 models/Lora 下放置 Pony6.sakuemonq.10 等像素 LoRA。
+本项目依赖 Stable Diffusion WebUI 开启 API 模式运行。<br>
+端口：http://127.0.0.1:7860<br>
+模型要求：需在 models/Lora 下放置 Pony6.sakuemonq.10 等像素 LoRA。<br>
 
 ### 4. 启动原型
 ```Bash
