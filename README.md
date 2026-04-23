@@ -48,4 +48,36 @@ Backend: Stable Diffusion API (Aki-v4.11.1)
 
 Logic: Python / PIL
 
+### 启动步骤
+#### 第一步：启动 Stable Diffusion 后端 (Aki-v4.11.1)
+进入文件夹 D:\Aaone\EchoPixel\sd-webui-aki-v4.11.1-cu128。
+
+双击运行 A启动器.exe。
+
+点击右下角的 “一键启动”。
+
+关键点：等待启动器的黑色控制台窗口出现，并显示 Model loaded in XXXs 以及 Running on local URL: http://127.0.0.1:7860。此时后端 API 才算真正准备好。
+#### 第二步：启动 VS Code 并激活环境
+打开 VS Code，确保左侧文件栏显示的是你的项目根目录 D:\Aaone\EchoPixel。
+
+按 Ctrl + ~ 打开内置终端。
+
+激活你之前创建的虚拟环境：
+
+````PowerShell
+
+.\.venv\Scripts\activate
+````
+检查：命令行开头是否出现了 (.venv) 字样？
+#### 第三步：运行 Gradio 交互界面
+在激活了虚拟环境的终端中输入：
+
+````PowerShell
+
+python EchoPixel/app.py
+````
+等待终端输出 Running on local URL: http://127.0.0.1:9999。
+
+按住 Ctrl 并点击该链接，或者直接在浏览器输入 127.0.0.1:9999。
+
 

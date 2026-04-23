@@ -2,82 +2,143 @@ import gradio as gr
 import requests
 import base64
 import io
-import json
+import os
 from PIL import Image
-# 假设你已经按照之前的建议在 engine 目录下创建了感知模块
-# from engine.perception import get_image_perception 
+from dotenv import load_dotenv
+from openai import OpenAI
 
-# --- 工具函数：Base64 转换 ---
-def pil_to_base64(img):
-    buffered = io.BytesIO()
-    img.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+# 1. 环境初始化
+load_dotenv()
+client = OpenAI(
+    api_key=os.getenv("DASHSCOPE_API_KEY"),
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
 
-# --- 核心业务逻辑：EchoPixel Agent 流转 ---
-def echo_pixel_pipeline(input_img):
+def get_image_perception(image_path, history_text):
+    """
+    视觉感知核心：让 Qwen-VL 读取图片并结合历史生成双语描述
+    """
+    with open(image_path, "rb") as f:
+        base64_image = base64.b64encode(f.read()).decode("utf-8")
+
+    # 构造强约束指令
+    system_prompt = f"""你是一个像素艺术故事策划。
+【当前记忆库】：{history_text if history_text else "故事刚刚开始。"}
+
+【任务】：
+1. 观察新图片。
+2. 延续记忆库中的剧情，构思这一幕发生的变化。
+3. 严格按此格式回复：
+剧情描述：[此处写20字内中文]
+英文提示词：[此处写一段英文绘图标签]"""
+
+    response = client.chat.completions.create(
+        model="qwen-vl-plus",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": system_prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                ],
+            }
+        ],
+    )
+    return response.choices[0].message.content
+
+# 2. 核心业务流水线
+def echo_pixel_pipeline(input_img, history):
     if input_img is None:
-        return "请先上传一张照片...", None
+        return history, "请先上传一张照片...", None
 
-    # 1. 模拟感知与剧情
-    thought_chain = "【感知引擎】识别到：西南大学图书馆背景...\n"
-    thought_chain += "【决策引擎】构思：一个小机器人在书架前寻找代码秘籍...\n"
+    # A. 预处理
+    temp_input = "input_cache.png"
+    input_img.save(temp_input)
     
-    # 2. 调用你之前验证成功的 API 逻辑
+    # B. 动态感知与记忆联动
+    try:
+        raw_res = get_image_perception(temp_input, history)
+        
+        # 解析双语输出
+        if "英文提示词：" in raw_res:
+            ch_desc = raw_res.split("英文提示词：")[0].replace("剧情描述：", "").strip()
+            en_prompt = raw_res.split("英文提示词：")[1].strip()
+        else:
+            # 保底逻辑：如果 AI 没按格式输出
+            ch_desc = "发现新线索"
+            en_prompt = raw_res
+
+        # 更新全局记忆
+        new_history = history + f"\n- {ch_desc}"
+        
+        # 构造思维链路显示
+        thought_chain = f"📝 历史剧情回顾：\n{history if history else '暂无'}\n"
+        thought_chain += f"------------------------\n"
+        thought_chain += f"🧠 这一刻发生的：{ch_desc}\n"
+        thought_chain += f"✨ 转化为像素指令：{en_prompt}"
+        
+    except Exception as e:
+        print(f"感知引擎报错: {e}")
+        return history, f"感知引擎罢工了: {str(e)}", None
+
+    # C. 调用 Stable Diffusion (使用 Qwen 提供的英文提示词)
+    style_boost = "(pixel art:1.5), (8-bit:1.2), isometric, retro game style"
+    final_prompt = f"{style_boost}, {en_prompt}, <lora:Pony6.sakuemonq.10:1>"
+    
     url = "http://127.0.0.1:7860/sdapi/v1/txt2img"
     payload = {
-        # 加上你之前下载的 LoRA 文件名
-        "prompt": "pixel art, a small robot in a library, <lora:Pony6.sakuemonq.10:1>",
-        "negative_prompt": "blur, lowres, realistic",
-        "steps": 20,
+        "prompt": final_prompt,
+        "negative_prompt": "blur, realistic, photo, text, watermark, (painting:1.5), (low quality:1.4)",
+        "steps": 25,
         "width": 512,
-        "height": 512
+        "height": 512,
+        "cfg_scale": 7
     }
     
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=60)
         r = response.json()
-        # 将 Base64 转回图片并显示到右侧展示框
-        import base64
-        import io
-        from PIL import Image
         image_data = base64.b64decode(r['images'][0])
         output_img = Image.open(io.BytesIO(image_data))
         
-        thought_chain += "【生成管线】像素画面融合完成！"
-        return thought_chain, output_img
+        thought_chain += "\n\n✅ 像素画面接龙成功！"
+        return new_history, thought_chain, output_img
     except Exception as e:
-        return f"连接 SD 后端失败，请确保秋叶启动器已开启 API 模式：{str(e)}", None
+        # 失败时依然返回旧的 history，防止状态丢失
+        return history, f"连接 SD 后端失败：{str(e)}", None
 
-# --- Gradio 界面布局 ---
-with gr.Blocks(title="EchoPixel - AI 视觉接龙实验室") as demo:
-    gr.Markdown("# 🎨 EchoPixel (灵感回响)")
-    gr.Markdown("### 基于 AI 视觉接龙的社交交互 Agent —— 连通现实与像素世界")
+# 3. 界面布局
+with gr.Blocks(title="EchoPixel Agent Lab", theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🎨 EchoPixel (灵感回响) v2.0")
+    gr.Markdown("### 视觉接龙 Agent：现实影像 → 剧情续写 → 像素重生")
     
-    with gr.Row():
-        # 左侧：上传框
-        with gr.Column(scale=1):
-            gr.Markdown("#### 📸 步骤 1：上传现实瞬间")
-            input_i = gr.Image(label="原始照片 (I)", type="pil")
-            run_btn = gr.Button("发起视觉接龙", variant="primary")
-        
-        # 中间：思维链路
-        with gr.Column(scale=1):
-            gr.Markdown("#### 🧠 步骤 2：Agent 思维链路")
-            thought_t = gr.Textbox(label="感知结果 (S) & 剧情续写 (T)", lines=15, interactive=False)
-            
-        # 右侧：输出框
-        with gr.Column(scale=1):
-            gr.Markdown("#### 👾 步骤 3：跨次元融合结果")
-            output_i = gr.Image(label="像素接龙图 (Iout)")
+    # 核心状态：隐藏的剧情笔记本
+    history_state = gr.State("")
 
-    # 绑定交互逻辑
+    with gr.Row():
+        with gr.Column(scale=1):
+            input_i = gr.Image(label="📸 步骤1：拍摄现实瞬间", type="pil")
+            with gr.Row():
+                run_btn = gr.Button("🔥 发起视觉接龙", variant="primary")
+                clear_btn = gr.Button("🗑️ 重置故事")
+        
+        with gr.Column(scale=1):
+            thought_t = gr.Textbox(label="🧠 步骤2：Agent 剧情分析 (中文)", lines=12)
+            
+        with gr.Column(scale=1):
+            output_i = gr.Image(label="👾 步骤3：跨次元生成结果")
+
+    # 交互绑定
     run_btn.click(
         fn=echo_pixel_pipeline,
-        inputs=[input_i],
-        outputs=[thought_t, output_i]
+        inputs=[input_i, history_state],
+        outputs=[history_state, thought_t, output_i]
     )
+    
+    # 重置按钮逻辑
+    clear_btn.click(lambda: ("", "故事已清空，请上传图片开始新篇章...", None), 
+                    None, [history_state, thought_t, output_i])
 
-# 启动程序
 if __name__ == "__main__":
-    # 强制指定本地 IP，并开启分享链接（可选）
-    demo.launch(server_name="127.0.0.1", show_error=True)
+    # 使用 server_port 避免之前的参数报错
+    demo.launch(server_name="127.0.0.1", server_port=9999, show_error=True)
